@@ -1,0 +1,96 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: MYSQLYqh12138
+      MYSQL_DATABASE: ProgHubDb
+      TZ: Asia/Shanghai
+    volumes:
+      - ./database/mysql:/var/lib/mysql
+      - ./database/ProgHubDb.sql:/docker-entrypoint-initdb.d/ProgHubDb.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--silent"]
+      interval: 30s
+      retries: 5
+      start_period: 5s
+      timeout: 10s
+
+  redis:
+    image: redis:latest  # 使用最新版本的 Redis 镜像
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "REDISYqh12138"]  # 设置 Redis 启动项，开启持久化
+    volumes:
+      - ./redis/data:/data  # 映射数据目录
+    environment:
+      - TZ=Asia/Shanghai  # 设置时区
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      retries: 5
+      start_period: 5s
+      timeout: 10s
+      
+  rabbitmq:
+    image: rabbitmq:management
+    ports:
+      - "5672:5672"   # AMQP 端口
+      - "15672:15672" # 管理界面端口
+    environment:
+      - RABBITMQ_DEFAULT_USER=RABBITMQ
+      - RABBITMQ_DEFAULT_PASS=RABBITMQYqh12138
+      - TZ=Asia/Shanghai
+    networks:
+      - app_network
+    volumes:
+      - ./rabbitmq/data:/var/lib/rabbitmq/mnesia
+    healthcheck:
+      test: [ "CMD", "curl", "-u", "RABBITMQ:RABBITMQYqh12138", "http://localhost:15672/api/healthchecks/node" ]
+      interval: 30s
+      retries: 5
+      start_period: 5s
+      timeout: 10s
+      
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+#      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/wxccampuse?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+#      - SPRING_DATASOURCE_USERNAME=root
+#      - SPRING_DATASOURCE_PASSWORD=MYSQLYqh12138
+      - TZ=Asia/Shanghai  #设置应用的时区
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./src:/usr/src/app
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  app_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+        - subnet: 172.29.0.0/16
+          gateway: 172.29.0.1
